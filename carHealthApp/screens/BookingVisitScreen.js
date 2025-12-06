@@ -22,6 +22,7 @@ export default function BookingVisitScreen({ route }) {
       phone,
       preferredDate: date,
       preferredTime: time,
+      serviceType: "visit",
       centreName: centre.tags?.name ?? "Service Centre",
       location: { lat: centre.lat, lon: centre.lon },
       issueType: type,
