@@ -1,22 +1,71 @@
 // App.js
 import React, { useState, useRef, useEffect } from "react";
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, Animated } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  FlatList,
+  ActivityIndicator,
+  Animated,
+} from "react-native";
 import Svg, { Circle } from "react-native-svg";
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import HealthCard from "./components/HealthCard";
 import styles from "./styles";
 
-const PREDICT_URL = "https://authentical-sandee-unsagely.ngrok-free.dev/predict";
+// Import new screens here ⬇️
+import HelpOptionsScreen from "./screens/HelpOptionsScreen";
+import DoorstepPickupScreen from "./screens/DoorstepPickupScreen";
+import OEMGaragesScreen from "./screens/OEMGaragesScreen";
 
-// single sample (we only sync sample1 for now)
+const Stack = createNativeStackNavigator();
+
+const PREDICT_URL =
+  "https://authentical-sandee-unsagely.ngrok-free.dev/predict";
+
 const SAMPLE = {
-  engine: { engine_temp_c: 128, engine_rpm: 3600, oil_pressure_psi: 14, coolant_temp_c:120, fuel_level_percent:21, fuel_consumption_lph:14.8, battery_voltage_v:11.4, battery_current_a:3.1, battery_temp_c:47, alternator_output_v:11.9, battery_charge_percent:28, vehicle_speed_kph:92, ambient_temp_c:35, humidity_percent:68, odometer_reading:164200 },
-  brake:  { brake_fluid_level_psi:18, brake_pad_wear_mm:12, brake_temp_c:182, abs_fault_indicator:1, brake_pedal_pos_percent:80, wheel_speed_fl_kph:4, wheel_speed_fr_kph:4, wheel_speed_rl_kph:3, wheel_speed_rr_kph:3 },
-  battery:{ battery_voltage_v:11.1, battery_current_a:2.1, battery_temp_c:51, alternator_output_v:12.2, battery_charge_percent:20, battery_health_percent:35 }
+  engine: {
+    engine_temp_c: 128,
+    engine_rpm: 3600,
+    oil_pressure_psi: 14,
+    coolant_temp_c: 120,
+    fuel_level_percent: 21,
+    fuel_consumption_lph: 14.8,
+    battery_voltage_v: 11.4,
+    battery_current_a: 3.1,
+    battery_temp_c: 47,
+    alternator_output_v: 11.9,
+    battery_charge_percent: 28,
+    vehicle_speed_kph: 92,
+    ambient_temp_c: 35,
+    humidity_percent: 68,
+    odometer_reading: 164200,
+  },
+  brake: {
+    brake_fluid_level_psi: 18,
+    brake_pad_wear_mm: 12,
+    brake_temp_c: 182,
+    abs_fault_indicator: 1,
+    brake_pedal_pos_percent: 80,
+    wheel_speed_fl_kph: 4,
+    wheel_speed_fr_kph: 4,
+    wheel_speed_rl_kph: 3,
+    wheel_speed_rr_kph: 3,
+  },
+  battery: {
+    battery_voltage_v: 11.1,
+    battery_current_a: 2.1,
+    battery_temp_c: 51,
+    alternator_output_v: 12.2,
+    battery_charge_percent: 20,
+    battery_health_percent: 35,
+  },
 };
 
+// Flatten function
 function flattenOBD(sample) {
   return {
     ...sample.engine,
@@ -36,16 +85,16 @@ function flattenOBD(sample) {
   };
 }
 
-export default function App() {
+function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState([]); // will hold backend response object
+  const [results, setResults] = useState([]);
   const overallAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (results[0]?.engine?.health_percent) {
-      // animate ring when health is set
+    if (results[0]) {
+      const total = calculateOverallHealth(results[0]);
       Animated.timing(overallAnim, {
-        toValue: results[0].engine.health_percent,
+        toValue: total,
         duration: 800,
         useNativeDriver: false,
       }).start();
@@ -68,19 +117,17 @@ export default function App() {
     }
     setLoading(false);
   }
+
   function calculateOverallHealth(result) {
-  if (!result) return 92;   // default placeholder for UI
-
-  const e = result.engine?.health_percent ?? 0;
-  const b = result.battery?.health_percent ?? 0;
-  const br = result.brake?.health_percent ?? 0;
-
-  return Math.round((e + b + br) / 3);
-}
+    if (!result) return 92;
+    const e = result.engine?.health_percent ?? 0;
+    const b = result.battery?.health_percent ?? 0;
+    const br = result.brake?.health_percent ?? 0;
+    return Math.round((e + b + br) / 3);
+  }
 
   const overallHealth = calculateOverallHealth(results[0]);
 
-  // ----- ring values -----
   const size = 115;
   const stroke = 10;
   const radius = (size - stroke) / 2;
@@ -99,25 +146,27 @@ export default function App() {
           <Text style={styles.title}>CURRENT VEHICLE</Text>
           <Text style={styles.subtitle}>Model S Dual Motor</Text>
         </View>
-        <View style={{ alignItems: "flex-end" }}>
-          <Text style={{ color: "#9fb7c7", fontSize: 12 }}>Range 268 mi</Text>
-          <View style={{ height: 8 }} />
-          <TouchableOpacity style={{ backgroundColor: "rgba(255,255,255,0.04)", padding: 8, borderRadius: 8 }}>
-            <MaterialCommunityIcons name="dots-horizontal" size={20} color="#9fb7c7" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity>
+          <MaterialCommunityIcons
+            name="dots-horizontal"
+            size={20}
+            color="#9fb7c7"
+          />
+        </TouchableOpacity>
       </View>
 
-      {/* top area: overall + ring */}
+      {/* top health section */}
       <View style={styles.topArea}>
         <View style={styles.leftSummary}>
           <Text style={styles.overallLabel}>Overall health</Text>
           <Text style={styles.overallLarge}>{overallHealth}%</Text>
-          <View style={{ height: 8 }} />
-          <Text style={styles.subtitle}>Last sync: {results[0] ? "just now" : "—"}</Text>
 
           <TouchableOpacity style={styles.syncButton} onPress={syncSample1}>
-            {loading ? <ActivityIndicator color="#052026" /> : <Text style={styles.syncText}>Sync Sample 1</Text>}
+            {loading ? (
+              <ActivityIndicator color="#052026" />
+            ) : (
+              <Text style={styles.syncText}>Sync Sample 1</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -127,7 +176,7 @@ export default function App() {
               cx={size / 2}
               cy={size / 2}
               r={radius}
-              stroke="#0f2430"
+              stroke="#d3d3d3"
               strokeWidth={stroke}
               fill="transparent"
             />
@@ -139,55 +188,78 @@ export default function App() {
               strokeWidth={stroke}
               strokeLinecap="round"
               fill="transparent"
-              strokeDasharray={`${circ} ${circ}`}
+              strokeDasharray={`${circ} ${circ}`}   
               strokeDashoffset={animatedStrokeDashoffset}
               transform={`rotate(-90 ${size / 2} ${size / 2})`}
+
             />
           </Svg>
         </View>
       </View>
 
-      {/* cards */}
+      {/* Health Cards */}
       <FlatList
         data={results.length ? results : [{ dummy: true }]}
-        keyExtractor={(_, i) => String(i)}
-        renderItem={() =>
-          results.length ? (
-            <View>
-              <HealthCard
-                title="Engine"
-                iconName="engine"
-                health={results[0].engine.health_percent}
-                recommendation={results[0].engine.recommendation}
-                lastSync="just now"
-              />
-
-              <HealthCard
-                title="Battery"
-                iconName="battery"
-                health={results[0].battery.health_percent}
-                recommendation={results[0].battery.recommendation}
-                lastSync="just now"
-              />
-
-              <HealthCard
-                title="Brakes"
-                iconName="car-brake-abs"
-                health={results[0].brake.health_percent}
-                recommendation={results[0].brake.recommendation}
-                lastSync="just now"
-              />
-            </View>
-          ) : (
-            <View>
-              {/* placeholders when no data */}
-              <HealthCard title="Engine" iconName="engine" health={92} subtitle="No data yet" recommendation="Sync to see details" lastSync="—" />
-              <HealthCard title="Battery" iconName="battery" health={86} subtitle="No data yet" recommendation="Sync to see details" lastSync="—" />
-              <HealthCard title="Brakes" iconName="car-brake-abs" health={78} subtitle="No data yet" recommendation="Sync to see details" lastSync="—" />
-            </View>
-          )
-        }
+        renderItem={() => (
+          <View>
+            <HealthCard
+              title="Engine"
+              iconName="engine"
+              health={results[0]?.engine?.health_percent ?? 92}
+              probability={results[0]?.engine?.probability}
+              failureImminent={results[0]?.engine?.failure_imminent}
+              recommendation={results[0]?.engine?.recommendation ?? "Engine normal."}
+              lastSync="2 mins ago"
+              onHelpPress={() =>
+                navigation.navigate("HelpOptions", { type: "engine" })
+              }
+            />
+            <HealthCard
+              title="Battery"
+              iconName="battery"
+              health={results[0]?.battery?.health_percent ?? 86}
+              probability={results[0]?.battery?.probability}
+              failureImminent={results[0]?.battery?.failure_imminent}
+              recommendation={results[0]?.battery?.recommendation ?? "Battery normal."}
+              lastSync="2 mins ago"
+              onHelpPress={() =>
+                navigation.navigate("HelpOptions", { type: "battery" })
+              }
+            />
+            <HealthCard
+              title="Brakes"
+              iconName="car-brake-abs"
+              health={results[0]?.brake?.health_percent ?? 78}
+              probability={results[0]?.brake?.probability}
+              failureImminent={results[0]?.brake?.failure_imminent}
+              recommendation={results[0]?.brake?.recommendation ?? "Brakes normal."}
+              lastSync="2 mins ago"
+              onHelpPress={() =>
+                navigation.navigate("HelpOptions", { type: "brake" })
+              }
+            />
+          </View>
+        )}
       />
     </View>
+  );
+}
+
+export default function App() {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator>
+        <Stack.Screen
+          name="App"
+          component={HomeScreen}
+          options={{ headerShown: false }}
+        />
+
+        {/* Your new screens */}
+        <Stack.Screen name="HelpOptions" component={HelpOptionsScreen} />
+        <Stack.Screen name="DoorstepPickup" component={DoorstepPickupScreen} />
+        <Stack.Screen name="OEMGarages" component={OEMGaragesScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }

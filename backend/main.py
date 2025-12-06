@@ -47,22 +47,11 @@ def engine_deviation(sample):
 def engine_health(sample):
     return max(0, round(100 - engine_deviation(sample) * 12, 1))
 
-# def engine_api(sample):
-#     df = pd.DataFrame([sample])
-#     proba = float(engine_model.predict_proba(df)[0][1])
-#     failure = proba > 0.5
-#     health = engine_health(sample)
 
-#     return {
-#         "failure_imminent": failure,
-#         "probability": round(proba, 4),
-#         "health_percent": health,
-#         "recommendation": "Severe engine risk detected." if failure else "Engine normal."
-#     }
 def engine_api(sample):
     df = pd.DataFrame([sample])[engine_cols]  # FIXED: remove unwanted columns
     proba = float(engine_model.predict_proba(df)[0][1])
-    failure = proba > 0.5
+    failure = proba > 0.3
     health = engine_health(sample)
 
     return {
@@ -131,7 +120,7 @@ def brake_api(sample):
     health = brake_health(sample)
 
     return {
-        "failure_imminient": failure,
+        "failure_imminent": failure,
         "probability": round(proba, 4),
         "health_percent": health,
         "recommendation": "Brake system unstable." if failure else "Brakes normal."
