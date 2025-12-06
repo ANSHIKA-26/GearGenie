@@ -17,16 +17,19 @@ import HealthCard from "./components/HealthCard";
 import styles from "./styles";
 
 // Import new screens here ⬇️
-import HelpOptionsScreen from "./screens/HelpOptionsScreen";
 import DoorstepPickupScreen from "./screens/DoorstepPickupScreen";
 import OEMGaragesScreen from "./screens/OEMGaragesScreen";
+import BookingChoiceScreen from "./screens/BookingChoiceScreen";
+import BookingVisitScreen from "./screens/BookingVisitScreen";
+import BookingPickupScreen from "./screens/BookingPickupScreen";
+
 
 const Stack = createNativeStackNavigator();
 
 const PREDICT_URL =
   "https://authentical-sandee-unsagely.ngrok-free.dev/predict";
 
-const SAMPLE = {
+export const SAMPLE = {
   engine: {
     engine_temp_c: 128,
     engine_rpm: 3600,
@@ -188,10 +191,9 @@ function HomeScreen({ navigation }) {
               strokeWidth={stroke}
               strokeLinecap="round"
               fill="transparent"
-              strokeDasharray={`${circ} ${circ}`}   
+              strokeDasharray={`${circ} ${circ}`}
               strokeDashoffset={animatedStrokeDashoffset}
               transform={`rotate(-90 ${size / 2} ${size / 2})`}
-
             />
           </Svg>
         </View>
@@ -208,10 +210,12 @@ function HomeScreen({ navigation }) {
               health={results[0]?.engine?.health_percent ?? 92}
               probability={results[0]?.engine?.probability}
               failureImminent={results[0]?.engine?.failure_imminent}
-              recommendation={results[0]?.engine?.recommendation ?? "Engine normal."}
+              recommendation={
+                results[0]?.engine?.recommendation ?? "Engine normal."
+              }
               lastSync="2 mins ago"
               onHelpPress={() =>
-                navigation.navigate("HelpOptions", { type: "engine" })
+                navigation.navigate("OEMGarages", { type: "engine" })
               }
             />
             <HealthCard
@@ -220,10 +224,12 @@ function HomeScreen({ navigation }) {
               health={results[0]?.battery?.health_percent ?? 86}
               probability={results[0]?.battery?.probability}
               failureImminent={results[0]?.battery?.failure_imminent}
-              recommendation={results[0]?.battery?.recommendation ?? "Battery normal."}
+              recommendation={
+                results[0]?.battery?.recommendation ?? "Battery normal."
+              }
               lastSync="2 mins ago"
               onHelpPress={() =>
-                navigation.navigate("HelpOptions", { type: "battery" })
+                navigation.navigate("OEMGarages", { type: "battery" })
               }
             />
             <HealthCard
@@ -232,10 +238,12 @@ function HomeScreen({ navigation }) {
               health={results[0]?.brake?.health_percent ?? 78}
               probability={results[0]?.brake?.probability}
               failureImminent={results[0]?.brake?.failure_imminent}
-              recommendation={results[0]?.brake?.recommendation ?? "Brakes normal."}
+              recommendation={
+                results[0]?.brake?.recommendation ?? "Brakes normal."
+              }
               lastSync="2 mins ago"
               onHelpPress={() =>
-                navigation.navigate("HelpOptions", { type: "brake" })
+                navigation.navigate("OEMGarages", { type: "brake" })
               }
             />
           </View>
@@ -247,19 +255,19 @@ function HomeScreen({ navigation }) {
 
 export default function App() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
-        <Stack.Screen
-          name="App"
-          component={HomeScreen}
-          options={{ headerShown: false }}
-        />
+  <NavigationContainer>
+  <Stack.Navigator>
 
-        {/* Your new screens */}
-        <Stack.Screen name="HelpOptions" component={HelpOptionsScreen} />
-        <Stack.Screen name="DoorstepPickup" component={DoorstepPickupScreen} />
-        <Stack.Screen name="OEMGarages" component={OEMGaragesScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <Stack.Screen name="App" component={HomeScreen} options={{ headerShown:false }}/>
+
+    {/* Only one entry for each screen */}
+    <Stack.Screen name="OEMGarages" component={OEMGaragesScreen} />
+    <Stack.Screen name="BookingChoice" component={BookingChoiceScreen} />
+    <Stack.Screen name="BookingVisit" component={BookingVisitScreen} />
+    <Stack.Screen name="BookingPickup" component={BookingPickupScreen} />
+
+  </Stack.Navigator>
+</NavigationContainer>
+
   );
 }
