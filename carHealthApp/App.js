@@ -16,59 +16,24 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import HealthCard from "./components/HealthCard";
 import styles from "./styles";
 
-// Import new screens here ⬇️
+// FIREBASE IMPORTS
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { db } from "./firebaseConfig";
+import MLLoading from "./components/MLLoading";
+
+// Screens
 import DoorstepPickupScreen from "./screens/DoorstepPickupScreen";
 import OEMGaragesScreen from "./screens/OEMGaragesScreen";
 import BookingChoiceScreen from "./screens/BookingChoiceScreen";
 import BookingVisitScreen from "./screens/BookingVisitScreen";
 import BookingPickupScreen from "./screens/BookingPickupScreen";
 
-
 const Stack = createNativeStackNavigator();
 
 const PREDICT_URL =
   "https://authentical-sandee-unsagely.ngrok-free.dev/predict";
 
-export const SAMPLE = {
-  engine: {
-    engine_temp_c: 128,
-    engine_rpm: 3600,
-    oil_pressure_psi: 14,
-    coolant_temp_c: 120,
-    fuel_level_percent: 21,
-    fuel_consumption_lph: 14.8,
-    battery_voltage_v: 11.4,
-    battery_current_a: 3.1,
-    battery_temp_c: 47,
-    alternator_output_v: 11.9,
-    battery_charge_percent: 28,
-    vehicle_speed_kph: 92,
-    ambient_temp_c: 35,
-    humidity_percent: 68,
-    odometer_reading: 164200,
-  },
-  brake: {
-    brake_fluid_level_psi: 18,
-    brake_pad_wear_mm: 12,
-    brake_temp_c: 182,
-    abs_fault_indicator: 1,
-    brake_pedal_pos_percent: 80,
-    wheel_speed_fl_kph: 4,
-    wheel_speed_fr_kph: 4,
-    wheel_speed_rl_kph: 3,
-    wheel_speed_rr_kph: 3,
-  },
-  battery: {
-    battery_voltage_v: 11.1,
-    battery_current_a: 2.1,
-    battery_temp_c: 51,
-    alternator_output_v: 12.2,
-    battery_charge_percent: 20,
-    battery_health_percent: 35,
-  },
-};
-
-// Flatten function
+// Flatten Function
 function flattenOBD(sample) {
   return {
     ...sample.engine,
@@ -91,8 +56,58 @@ function flattenOBD(sample) {
 function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
+
+  // NEW STATES
+  const [samples, setSamples] = useState([]);
+  const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
+
   const overallAnim = useRef(new Animated.Value(0)).current;
 
+  // Fetch samples from Firestore
+  useEffect(() => {
+    async function fetchSamples() {
+      try {
+        const q = query(collection(db, "obd-samples"), orderBy("label"));
+        const snap = await getDocs(q);
+        const list = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setSamples(list);
+        console.log("Fetched OBD samples:", list);
+      } catch (e) {
+        console.log("Error loading samples", e);
+      }
+    }
+
+    fetchSamples();
+  }, []);
+
+  // Sync Firestore sample → backend
+  async function syncSelectedSample() {
+    if (!samples.length) {
+      alert("No samples found in Firestore!");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const selected = samples[selectedSampleIndex];
+      const payload = flattenOBD(selected);
+      console.log("Flattened payload being sent:", payload);
+
+      const res = await fetch(PREDICT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: payload }),
+      });
+
+      const json = await res.json();
+      setResults([json]);
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+    setLoading(false);
+  }
+
+  // Animation for overall health
   useEffect(() => {
     if (results[0]) {
       const total = calculateOverallHealth(results[0]);
@@ -103,23 +118,6 @@ function HomeScreen({ navigation }) {
       }).start();
     }
   }, [results]);
-
-  async function syncSample1() {
-    setLoading(true);
-    try {
-      const payload = flattenOBD(SAMPLE);
-      const res = await fetch(PREDICT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: payload }),
-      });
-      const json = await res.json();
-      setResults([json]);
-    } catch (err) {
-      alert("Error: " + err.message);
-    }
-    setLoading(false);
-  }
 
   function calculateOverallHealth(result) {
     if (!result) return 92;
@@ -143,7 +141,7 @@ function HomeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* header */}
+      {/* HEADER */}
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>CURRENT VEHICLE</Text>
@@ -158,21 +156,45 @@ function HomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* top health section */}
+      {/* TOP HEALTH SECTION */}
       <View style={styles.topArea}>
         <View style={styles.leftSummary}>
           <Text style={styles.overallLabel}>Overall health</Text>
           <Text style={styles.overallLarge}>{overallHealth}%</Text>
 
-          <TouchableOpacity style={styles.syncButton} onPress={syncSample1}>
+          {/* SHOW CURRENT SAMPLE */}
+          <Text style={{ marginTop: 10, color: "#87a4b6" }}>
+            Sample: {samples[selectedSampleIndex]?.label ?? "Loading..."}
+          </Text>
+
+          {/* NEXT SAMPLE BUTTON */}
+          <TouchableOpacity
+            style={[styles.syncButton, { marginTop: 10 }]}
+            onPress={() => {
+              if (samples.length > 0) {
+                setSelectedSampleIndex(
+                  (selectedSampleIndex + 1) % samples.length
+                );
+              }
+            }}
+          >
+            <Text style={styles.syncText}>Next Sample</Text>
+          </TouchableOpacity>
+
+          {/* SYNC BUTTON */}
+          <TouchableOpacity
+            style={[styles.syncButton, { marginTop: 10 }]}
+            onPress={syncSelectedSample}
+          >
             {loading ? (
               <ActivityIndicator color="#052026" />
             ) : (
-              <Text style={styles.syncText}>Sync Sample 1</Text>
+              <Text style={styles.syncText}>Sync Selected Sample</Text>
             )}
           </TouchableOpacity>
         </View>
 
+        {/* HEALTH RING */}
         <View style={styles.ringBox}>
           <Svg width={size} height={size}>
             <Circle
@@ -199,7 +221,7 @@ function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Health Cards */}
+      {/* HEALTH CARDS */}
       <FlatList
         data={results.length ? results : [{ dummy: true }]}
         renderItem={() => (
@@ -255,19 +277,18 @@ function HomeScreen({ navigation }) {
 
 export default function App() {
   return (
-  <NavigationContainer>
-  <Stack.Navigator>
-
-    <Stack.Screen name="App" component={HomeScreen} options={{ headerShown:false }}/>
-
-    {/* Only one entry for each screen */}
-    <Stack.Screen name="OEMGarages" component={OEMGaragesScreen} />
-    <Stack.Screen name="BookingChoice" component={BookingChoiceScreen} />
-    <Stack.Screen name="BookingVisit" component={BookingVisitScreen} />
-    <Stack.Screen name="BookingPickup" component={BookingPickupScreen} />
-
-  </Stack.Navigator>
-</NavigationContainer>
-
+    <NavigationContainer>
+      <Stack.Navigator>
+        <Stack.Screen
+          name="App"
+          component={HomeScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen name="OEMGarages" component={OEMGaragesScreen} />
+        <Stack.Screen name="BookingChoice" component={BookingChoiceScreen} />
+        <Stack.Screen name="BookingVisit" component={BookingVisitScreen} />
+        <Stack.Screen name="BookingPickup" component={BookingPickupScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
