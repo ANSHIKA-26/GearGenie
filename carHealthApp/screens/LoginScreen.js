@@ -18,7 +18,6 @@ export default function LoginScreen({ navigation }) {
 
       // DO NOT navigate manually — your RootNavigator handles redirect!
       // navigation.replace("App");
-
     } catch (err) {
       alert(err.message);
     }
@@ -66,6 +65,17 @@ export default function LoginScreen({ navigation }) {
         }}
       >
         <Text style={{ color: "#fff", fontWeight: "700" }}>Login</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => navigation.navigate("Signup")}
+        style={{ marginTop: 20 }}
+      >
+        <Text
+          style={{ textAlign: "center", color: "#3498db", fontWeight: "600" }}
+        >
+          Don't have an account? Sign Up
+        </Text>
       </TouchableOpacity>
     </View>
   );

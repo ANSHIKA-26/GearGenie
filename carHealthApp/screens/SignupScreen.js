@@ -1,3 +1,4 @@
+// screens/SignupScreen.js
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -10,18 +11,24 @@ export default function SignupScreen({ navigation }) {
   const [password, setPassword] = useState("");
 
   async function assignRandomSample(uid) {
+    // Get all OBD samples
     const snap = await getDocs(collection(db, "obd-samples"));
     const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+    if (all.length === 0) {
+      throw new Error("No OBD samples found in Firestore!");
+    }
+
+    // Pick random sample
     const random = all[Math.floor(Math.random() * all.length)];
 
-    // Save to Firestore under users collection
+    // Save inside Firestore user profile
     await setDoc(doc(db, "users", uid), {
-      assignedSampleId: random.id,
+      assigned_sample: random.id,
       email: email,
     });
 
-    // Save locally
+    // Save locally for immediate use
     await AsyncStorage.setItem("assignedSampleId", random.id);
 
     return random.id;
@@ -29,13 +36,16 @@ export default function SignupScreen({ navigation }) {
 
   async function handleSignup() {
     try {
+      // 1️⃣ Create Firebase Auth user
       const c = await createUserWithEmailAndPassword(auth, email, password);
 
-      // Assign random sample
+      // 2️⃣ Assign random sample to user
       await assignRandomSample(c.user.uid);
 
-      // Mark user authenticated
+      // 3️⃣ Store token — triggers auto-navigation
       await AsyncStorage.setItem("authToken", c.user.uid);
+
+      // DON'T navigate manually — App.js handles this automatically
 
     } catch (err) {
       alert(err.message);
@@ -45,7 +55,7 @@ export default function SignupScreen({ navigation }) {
   return (
     <View style={{ flex: 1, padding: 20, justifyContent: "center" }}>
       <Text style={{ fontSize: 28, fontWeight: "700", marginBottom: 20 }}>
-        Sign Up
+        Create Account
       </Text>
 
       <TextInput
@@ -54,7 +64,10 @@ export default function SignupScreen({ navigation }) {
         value={email}
         onChangeText={setEmail}
         style={{
-          borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 12,
+          borderWidth: 1,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 12,
         }}
       />
 
@@ -64,40 +77,33 @@ export default function SignupScreen({ navigation }) {
         value={password}
         onChangeText={setPassword}
         style={{
-          borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 12,
+          borderWidth: 1,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 12,
         }}
       />
 
       <TouchableOpacity
         onPress={handleSignup}
         style={{
-          backgroundColor: "#3498db",
+          backgroundColor: "#2ecc71",
           padding: 14,
           borderRadius: 8,
           alignItems: "center",
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "700" }}>Create Account</Text>
+        <Text style={{ color: "#fff", fontWeight: "700" }}>Sign Up</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        onPress={() => navigation.replace("Login")}
+        onPress={() => navigation.navigate("Login")}
         style={{ marginTop: 20 }}
       >
-        <Text style={{ textAlign: "center", color: "#555" }}>
+        <Text style={{ textAlign: "center", color: "#3498db" }}>
           Already have an account? Log in
         </Text>
       </TouchableOpacity>
-
-      <TouchableOpacity
-  onPress={() => navigation.replace("Signup")}
-  style={{ marginTop: 20 }}
->
-  <Text style={{ textAlign: "center", color: "#555" }}>
-    Don't have an account? Sign Up
-  </Text>
-</TouchableOpacity>
-
     </View>
   );
 }
