@@ -7,12 +7,10 @@ import {
   TouchableOpacity,
 } from "react-native";
 import * as Location from "expo-location";
-import { SAMPLE } from "../App"; 
 
-
-// function to calculate distance between two coordinates (Haversine formula)
+// Haversine formula for distance
 function getDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Radius of earth in KM
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
 
@@ -24,11 +22,13 @@ function getDistance(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // distance in KM
+
+  return R * c;
 }
 
 export default function OEMGaragesScreen({ route, navigation }) {
-  const { type } = route.params;
+  const { type, obdData } = route.params; // <-- Now receiving the actual sample
+
   const [loading, setLoading] = useState(true);
   const [garages, setGarages] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
@@ -40,20 +40,18 @@ export default function OEMGaragesScreen({ route, navigation }) {
   async function getLocationThenFetch() {
     setLoading(true);
 
-    // 1. Permission
     let { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {
       alert("Location permission denied");
       return setLoading(false);
     }
 
-    // 2. User coordinates
     let pos = await Location.getCurrentPositionAsync({});
     setUserLocation(pos.coords);
 
     const { latitude, longitude } = pos.coords;
 
-const query = `
+    const query = `
 [out:json][timeout:25];
 (
   node["amenity"="car_dealership"](around:100000,${latitude},${longitude});
@@ -64,17 +62,14 @@ const query = `
 out body;
 `;
 
-// The fix ⬇
-const overpassURL = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
-
-
+    const overpassURL =
+      "https://overpass-api.de/api/interpreter?data=" +
+      encodeURIComponent(query);
 
     try {
       const res = await fetch(overpassURL);
       const json = await res.json();
 
-      // 4. Filter OEM like places
-      // No strict OEM check — accept all automotive service related places
       const filtered = json.elements.filter(
         (item) =>
           item.tags?.shop === "car_repair" ||
@@ -84,13 +79,12 @@ const overpassURL = "https://overpass-api.de/api/interpreter?data=" + encodeURIC
           item.tags?.service === "vehicle_repair"
       );
 
-      // 5. add distance to each object
       const withDistance = filtered
         .map((s) => ({
           ...s,
           distance: getDistance(latitude, longitude, s.lat, s.lon),
         }))
-        .sort((a, b) => a.distance - b.distance); // nearest first
+        .sort((a, b) => a.distance - b.distance);
 
       setGarages(withDistance);
     } catch (e) {
@@ -129,9 +123,12 @@ const overpassURL = "https://overpass-api.de/api/interpreter?data=" + encodeURIC
         renderItem={({ item }) => (
           <TouchableOpacity
             onPress={() =>
-              navigation.navigate("BookingChoice", { centre: item, type, obdData: SAMPLE })
+              navigation.navigate("BookingChoice", {
+                centre: item,
+                type,
+                obdData, // <-- passing OBD data forward
+              })
             }
-            
             style={{
               backgroundColor: "#0f2f3b",
               padding: 18,
@@ -143,13 +140,13 @@ const overpassURL = "https://overpass-api.de/api/interpreter?data=" + encodeURIC
               {item.tags?.name ?? "Authorized Service Centre"}
             </Text>
 
-            {/* OEM logo/brand */}
             <Text style={{ color: "#7dbde8" }}>
               Brand: {item.tags?.brand ?? "OEM Certified"}
             </Text>
 
-            {/* Distance */}
-            <Text style={{ color: "#2ecc71", marginTop: 6, fontWeight: "600" }}>
+            <Text
+              style={{ color: "#2ecc71", marginTop: 6, fontWeight: "600" }}
+            >
               📍 {item.distance.toFixed(1)} km away
             </Text>
 

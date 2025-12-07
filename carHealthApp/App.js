@@ -15,10 +15,18 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import HealthCard from "./components/HealthCard";
 import styles from "./styles";
+import SignupScreen from "./screens/SignupScreen";
 
 // FIREBASE IMPORTS
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { db } from "./firebaseConfig";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  getDoc,
+  doc,
+} from "firebase/firestore";
+import { auth, db } from "./firebaseConfig";
 import MLLoading from "./components/MLLoading";
 
 // Screens
@@ -27,6 +35,8 @@ import OEMGaragesScreen from "./screens/OEMGaragesScreen";
 import BookingChoiceScreen from "./screens/BookingChoiceScreen";
 import BookingVisitScreen from "./screens/BookingVisitScreen";
 import BookingPickupScreen from "./screens/BookingPickupScreen";
+import LoginScreen from "./screens/LoginScreen";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const Stack = createNativeStackNavigator();
 
@@ -56,42 +66,81 @@ function flattenOBD(sample) {
 function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
-
-  // NEW STATES
   const [samples, setSamples] = useState([]);
   const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
+  const [mlLoading, setMlLoading] = useState(false);
 
   const overallAnim = useRef(new Animated.Value(0)).current;
 
-  // Fetch samples from Firestore
+  // LOAD SAMPLES (including fallback to Firestore)
   useEffect(() => {
-    async function fetchSamples() {
+    async function loadSamples() {
       try {
+        let assignedSampleId = await AsyncStorage.getItem("assignedSampleId");
+
+        if (!assignedSampleId) {
+          console.log("No local assigned sample — checking Firestore");
+
+          const user = auth.currentUser;
+          if (user) {
+            const userDoc = await getDoc(doc(db, "users", user.uid));
+            if (userDoc.exists()) {
+              assignedSampleId = userDoc.data().assigned_sample;
+              await AsyncStorage.setItem("assignedSampleId", assignedSampleId);
+            }
+          }
+        }
+
+        if (!assignedSampleId) return;
+
+        const assignedSnap = await getDoc(
+          doc(db, "obd-samples", assignedSampleId)
+        );
+
+        let assignedSample = null;
+        if (assignedSnap.exists()) {
+          assignedSample = { id: assignedSnap.id, ...assignedSnap.data() };
+        }
+
         const q = query(collection(db, "obd-samples"), orderBy("label"));
-        const snap = await getDocs(q);
-        const list = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setSamples(list);
-        console.log("Fetched OBD samples:", list);
-      } catch (e) {
-        console.log("Error loading samples", e);
+        const allSnap = await getDocs(q);
+        const allSamples = allSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        const ordered = assignedSample
+          ? [
+              assignedSample,
+              ...allSamples.filter((s) => s.id !== assignedSample.id),
+            ]
+          : allSamples;
+
+        setSamples(ordered);
+        setSelectedSampleIndex(0);
+      } catch (err) {
+        console.log("Error loading samples:", err);
       }
     }
 
-    fetchSamples();
+    loadSamples();
   }, []);
 
-  // Sync Firestore sample → backend
-  async function syncSelectedSample() {
-    if (!samples.length) {
-      alert("No samples found in Firestore!");
-      return;
-    }
+  async function handleLogout() {
+    await auth.signOut();
+  }
 
+  // Sync selected sample to backend (unchanged)
+  async function syncSelectedSample() {
+    if (!samples.length) return alert("No samples found!");
+
+    setMlLoading(true);
     setLoading(true);
+    const startTime = Date.now();
+
     try {
       const selected = samples[selectedSampleIndex];
       const payload = flattenOBD(selected);
-      console.log("Flattened payload being sent:", payload);
 
       const res = await fetch(PREDICT_URL, {
         method: "POST",
@@ -104,13 +153,27 @@ function HomeScreen({ navigation }) {
     } catch (err) {
       alert("Error: " + err.message);
     }
-    setLoading(false);
+
+    const elapsed = Date.now() - startTime;
+    const remaining = 6000 - elapsed;
+
+    setTimeout(
+      () => {
+        setMlLoading(false);
+        setLoading(false);
+      },
+      remaining > 0 ? remaining : 0
+    );
   }
 
-  // Animation for overall health
+  // Overall health animation
   useEffect(() => {
     if (results[0]) {
-      const total = calculateOverallHealth(results[0]);
+      const e = results[0].engine?.health_percent ?? 0;
+      const b = results[0].battery?.health_percent ?? 0;
+      const br = results[0].brake?.health_percent ?? 0;
+
+      const total = Math.round((e + b + br) / 3);
       Animated.timing(overallAnim, {
         toValue: total,
         duration: 800,
@@ -118,16 +181,6 @@ function HomeScreen({ navigation }) {
       }).start();
     }
   }, [results]);
-
-  function calculateOverallHealth(result) {
-    if (!result) return 92;
-    const e = result.engine?.health_percent ?? 0;
-    const b = result.battery?.health_percent ?? 0;
-    const br = result.brake?.health_percent ?? 0;
-    return Math.round((e + b + br) / 3);
-  }
-
-  const overallHealth = calculateOverallHealth(results[0]);
 
   const size = 115;
   const stroke = 10;
@@ -139,49 +192,52 @@ function HomeScreen({ navigation }) {
     outputRange: [circ, 0],
   });
 
+  const currentSample = samples[selectedSampleIndex];
+
   return (
     <View style={styles.container}>
-      {/* HEADER */}
+      {mlLoading && <MLLoading />}
+
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>CURRENT VEHICLE</Text>
           <Text style={styles.subtitle}>Model S Dual Motor</Text>
         </View>
-        <TouchableOpacity>
-          <MaterialCommunityIcons
-            name="dots-horizontal"
-            size={20}
-            color="#9fb7c7"
-          />
+
+        <TouchableOpacity onPress={handleLogout}>
+          <MaterialCommunityIcons name="logout" size={22} color="#9fb7c7" />
         </TouchableOpacity>
       </View>
 
-      {/* TOP HEALTH SECTION */}
+      {/* TOP AREA */}
       <View style={styles.topArea}>
         <View style={styles.leftSummary}>
           <Text style={styles.overallLabel}>Overall health</Text>
-          <Text style={styles.overallLarge}>{overallHealth}%</Text>
-
-          {/* SHOW CURRENT SAMPLE */}
-          <Text style={{ marginTop: 10, color: "#87a4b6" }}>
-            Sample: {samples[selectedSampleIndex]?.label ?? "Loading..."}
+          <Text style={styles.overallLarge}>
+            {results[0]
+              ? Math.round(
+                  (results[0].engine.health_percent +
+                    results[0].battery.health_percent +
+                    results[0].brake.health_percent) /
+                    3
+                )
+              : 92}
+            %
           </Text>
 
-          {/* NEXT SAMPLE BUTTON */}
+          <Text style={{ marginTop: 10, color: "#87a4b6" }}>
+            Sample: {currentSample?.label ?? "Loading..."}
+          </Text>
+
           <TouchableOpacity
             style={[styles.syncButton, { marginTop: 10 }]}
-            onPress={() => {
-              if (samples.length > 0) {
-                setSelectedSampleIndex(
-                  (selectedSampleIndex + 1) % samples.length
-                );
-              }
-            }}
+            onPress={() =>
+              setSelectedSampleIndex((selectedSampleIndex + 1) % samples.length)
+            }
           >
             <Text style={styles.syncText}>Next Sample</Text>
           </TouchableOpacity>
 
-          {/* SYNC BUTTON */}
           <TouchableOpacity
             style={[styles.syncButton, { marginTop: 10 }]}
             onPress={syncSelectedSample}
@@ -194,7 +250,7 @@ function HomeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* HEALTH RING */}
+        {/* RING */}
         <View style={styles.ringBox}>
           <Svg width={size} height={size}>
             <Circle
@@ -226,46 +282,51 @@ function HomeScreen({ navigation }) {
         data={results.length ? results : [{ dummy: true }]}
         renderItem={() => (
           <View>
+            {/* ENGINE */}
             <HealthCard
               title="Engine"
               iconName="engine"
               health={results[0]?.engine?.health_percent ?? 92}
               probability={results[0]?.engine?.probability}
               failureImminent={results[0]?.engine?.failure_imminent}
-              recommendation={
-                results[0]?.engine?.recommendation ?? "Engine normal."
-              }
-              lastSync="2 mins ago"
+              recommendation={results[0]?.engine?.recommendation}
               onHelpPress={() =>
-                navigation.navigate("OEMGarages", { type: "engine" })
+                navigation.navigate("OEMGarages", {
+                  type: "engine",
+                  obdData: currentSample,
+                })
               }
             />
+
+            {/* BATTERY */}
             <HealthCard
               title="Battery"
               iconName="battery"
               health={results[0]?.battery?.health_percent ?? 86}
               probability={results[0]?.battery?.probability}
               failureImminent={results[0]?.battery?.failure_imminent}
-              recommendation={
-                results[0]?.battery?.recommendation ?? "Battery normal."
-              }
-              lastSync="2 mins ago"
+              recommendation={results[0]?.battery?.recommendation}
               onHelpPress={() =>
-                navigation.navigate("OEMGarages", { type: "battery" })
+                navigation.navigate("OEMGarages", {
+                  type: "battery",
+                  obdData: currentSample,
+                })
               }
             />
+
+            {/* BRAKES */}
             <HealthCard
               title="Brakes"
               iconName="car-brake-abs"
               health={results[0]?.brake?.health_percent ?? 78}
               probability={results[0]?.brake?.probability}
               failureImminent={results[0]?.brake?.failure_imminent}
-              recommendation={
-                results[0]?.brake?.recommendation ?? "Brakes normal."
-              }
-              lastSync="2 mins ago"
+              recommendation={results[0]?.brake?.recommendation}
               onHelpPress={() =>
-                navigation.navigate("OEMGarages", { type: "brake" })
+                navigation.navigate("OEMGarages", {
+                  type: "brake",
+                  obdData: currentSample,
+                })
               }
             />
           </View>
@@ -276,18 +337,44 @@ function HomeScreen({ navigation }) {
 }
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // THIS FIXES LOGIN + LOGOUT STATE ALWAYS
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        await AsyncStorage.setItem("authToken", user.uid);
+        setAuthenticated(true);
+      } else {
+        await AsyncStorage.removeItem("authToken");
+        setAuthenticated(false);
+      }
+      setCheckingAuth(false);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  if (checkingAuth) return null;
+
   return (
     <NavigationContainer>
-      <Stack.Navigator>
-        <Stack.Screen
-          name="App"
-          component={HomeScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen name="OEMGarages" component={OEMGaragesScreen} />
-        <Stack.Screen name="BookingChoice" component={BookingChoiceScreen} />
-        <Stack.Screen name="BookingVisit" component={BookingVisitScreen} />
-        <Stack.Screen name="BookingPickup" component={BookingPickupScreen} />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!authenticated ? (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Signup" component={SignupScreen} />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="App" component={HomeScreen} />
+            <Stack.Screen name="OEMGarages" component={OEMGaragesScreen} />
+            <Stack.Screen name="BookingChoice" component={BookingChoiceScreen} />
+            <Stack.Screen name="BookingVisit" component={BookingVisitScreen} />
+            <Stack.Screen name="BookingPickup" component={BookingPickupScreen} />
+          </>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );
