@@ -11,8 +11,8 @@ export default function MLLoading() {
     // Icon pulse animation
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.2, duration: 600, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1.2, duration: 300, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 300, useNativeDriver: true }),
       ])
     ).start();
 

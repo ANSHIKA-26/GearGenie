@@ -2,7 +2,18 @@ import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 
 export default function BookingChoiceScreen({ route, navigation }) {
-  const { centre, type, obdData } = route.params;
+  const { centre, type, obdData } = route?.params ?? {};
+
+  if (!centre || !type) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#06212c", justifyContent: "center", alignItems: "center" }}>
+        <Text style={{ color: "white", fontSize: 18 }}>No booking data found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20, padding: 10, backgroundColor: "#2ecc71", borderRadius: 6 }}>
+          <Text style={{ color: "#06212c", fontWeight: "bold" }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex:1, backgroundColor:"#06212c", padding:25 }}>

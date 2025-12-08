@@ -8,14 +8,26 @@ import {
 } from "react-native";
 import { BACKEND_URL } from "../config"; // <-- you already made this in last step
 
-export default function BookingPickupScreen({ route }) {
-  const { centre, type, obdData } = route.params;
+export default function BookingPickupScreen({ route, navigation }) {
+  const { centre, type, obdData } = route?.params ?? {};
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
+
+  // Safety check - redirect if no data
+  if (!centre || !type) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#06212c", justifyContent: "center", alignItems: "center" }}>
+        <Text style={{ color: "white", fontSize: 18 }}>No booking data found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20, padding: 10, backgroundColor: "#2ecc71", borderRadius: 6 }}>
+          <Text style={{ color: "#06212c", fontWeight: "bold" }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   async function submitPickup() {
     if (!name || !phone || !address || !date || !time) {
@@ -58,7 +70,7 @@ export default function BookingPickupScreen({ route }) {
         Doorstep Pickup Request
       </Text>
       <Text style={{ color: "#8fc7dd", marginBottom: 25 }}>
-        {centre.tags?.name} — {type.toUpperCase()}
+        {centre?.tags?.name ?? "Service Centre"} — {(type ?? "unknown").toUpperCase()}
       </Text>
 
       <Text style={{ color: "white" }}>Name</Text>

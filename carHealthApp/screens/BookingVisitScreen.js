@@ -3,13 +3,25 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView } from "react-nativ
 import { BACKEND_URL } from "../config";
 
 
-export default function BookingVisitScreen({ route }) {
-  const { centre, type, obdData } = route.params;   // we'll pass obdData soon
+export default function BookingVisitScreen({ route, navigation }) {
+  const { centre, type, obdData } = route?.params ?? {};
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
+
+  // Safety check - redirect if no data
+  if (!centre || !type) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#06212c", justifyContent: "center", alignItems: "center" }}>
+        <Text style={{ color: "white", fontSize: 18 }}>No booking data found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20, padding: 10, backgroundColor: "#2ecc71", borderRadius: 6 }}>
+          <Text style={{ color: "#06212c", fontWeight: "bold" }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   async function submitBooking() {
     if (!name || !phone || !date || !time) {
@@ -50,7 +62,7 @@ export default function BookingVisitScreen({ route }) {
       </Text>
 
       <Text style={{ color:"#7dbde8", marginBottom:20 }}>
-        {centre.tags?.name} — {type.toUpperCase()}
+        {centre?.tags?.name ?? "Service Centre"} — {(type ?? "unknown").toUpperCase()}
       </Text>
 
       <Text style={{ color:"white", fontSize:16 }}>Your Name</Text>
