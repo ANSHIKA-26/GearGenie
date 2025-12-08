@@ -5,22 +5,19 @@ import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import styles from "../styles";
 
-export default function HealthCard({ 
-  title, 
-  iconName, 
-  health, 
-  probability,
-  failureImminent,
-  recommendation, 
-  lastSync, 
-  onHelpPress, 
-  subtitle 
+export default function HealthCard({
+  title,
+  iconName,
+  health,
+  recommendation,
+  onHelpPress,
+  rul,
 }) {
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(anim, {
-      toValue: health,
+      toValue: health ?? 0,
       duration: 700,
       useNativeDriver: false,
     }).start();
@@ -31,14 +28,16 @@ export default function HealthCard({
     outputRange: ["0%", "100%"],
   });
 
-  // Use ML probability for critical detection (this is the real AI prediction!)
-  const isCritical = failureImminent === true || (probability && probability > 0.5);
-  
-  // Color based on health (intuitive - more filled = better)
-  const barColor = health >= 70 ? "#2ecc71" : health >= 40 ? "#f1c40f" : "#e74c3c";
-  
-  // Display health as percentage (user-friendly)
-  const displayPercent = health;
+  // ---- Status Color Logic (Based Only on RUL) ----
+  function getLevel() {
+    if ((rul ?? 999) <= 7) return "red";
+    if ((rul ?? 999) <= 20) return "yellow";
+    return "green";
+  }
+
+  const level = getLevel();
+  const barColor =
+    level === "green" ? "#2ecc71" : level === "yellow" ? "#f1c40f" : "#e74c3c";
 
   return (
     <LinearGradient colors={["#0f1724", "#09101a"]} style={styles.card}>
@@ -46,44 +45,37 @@ export default function HealthCard({
         <View style={styles.iconContainer}>
           <MaterialCommunityIcons name={iconName} size={22} color={barColor} />
         </View>
+
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.cardTitle}>{title}</Text>
-          {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
         </View>
-        <Text style={[styles.healthNumber, { color: barColor }]}>{displayPercent}%</Text>
+
+        <Text style={[styles.healthNumber, { color: barColor }]}>
+          {health}%
+        </Text>
       </View>
 
       <View style={{ marginTop: 12 }}>
-        <Text style={styles.smallLabel}>Health Status</Text>
         <View style={styles.healthBarBackground}>
           <Animated.View
             style={[
               styles.healthBarFill,
-              {
-                width: widthInterpolate,
-                backgroundColor: barColor,
-              },
+              { width: widthInterpolate, backgroundColor: barColor },
             ]}
           />
         </View>
-        {probability !== undefined && health < 30.8 && (
-          <View style={{ 
-            marginTop: 8, 
-            padding: 8, 
-            backgroundColor: 'rgba(231, 76, 60, 0.1)', 
-            borderRadius: 4,
-            borderLeftWidth: 3,
-            borderLeftColor: '#e74c3c'
-          }}>
-            <Text style={[styles.recoText, { color: '#e74c3c', fontWeight: '600' }]}>
-              ⚠️ {Math.round(probability * 100)}% failure risk detected by AI
-            </Text>
-          </View>
-        )}
-        <Text style={styles.recoText}>{recommendation}</Text>
-        <Text style={styles.lastSync}>Last sync: {lastSync}</Text>
 
-        {isCritical && (
+        {/* ⭐ NEW – Show RUL Straightforward */}
+        <Text style={[styles.recoText, { marginTop: 6 }]}>
+          RUL: {rul ?? "--"} km remaining
+        </Text>
+
+        {/* Recommendation from API */}
+        <Text style={[styles.recoText, { marginTop: 4, opacity: 0.8 }]}>
+          {recommendation}
+        </Text>
+
+        {level === "red" && (
           <TouchableOpacity
             style={{
               marginTop: 10,
@@ -94,7 +86,7 @@ export default function HealthCard({
             onPress={onHelpPress}
           >
             <Text style={{ color: "white", textAlign: "center" }}>
-              Contact Help
+              Contact Service
             </Text>
           </TouchableOpacity>
         )}

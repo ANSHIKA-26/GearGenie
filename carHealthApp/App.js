@@ -1,12 +1,12 @@
-// App.js
+// ================= IMPORTS =================
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
   ActivityIndicator,
   Animated,
+  ScrollView,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -17,7 +17,7 @@ import HealthCard from "./components/HealthCard";
 import styles from "./styles";
 import SignupScreen from "./screens/SignupScreen";
 
-// FIREBASE IMPORTS
+// FIREBASE
 import {
   collection,
   getDocs,
@@ -38,144 +38,208 @@ import BookingPickupScreen from "./screens/BookingPickupScreen";
 import LoginScreen from "./screens/LoginScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+
 const Stack = createNativeStackNavigator();
 
-const PREDICT_URL =
-  "https://authentical-sandee-unsagely.ngrok-free.dev/predict";
+// 🔥 Your ML Backend URL
+const PREDICT_URL = "https://authentical-sandee-unsagely.ngrok-free.dev/predict";
 
-// Flatten Function
-function flattenOBD(sample) {
-  return {
-    ...sample.engine,
-    ...sample.brake,
-    ...sample.battery,
-    brand: "toyota",
-    engine_failure_imminent: 0,
-    battery_issue_imminent: 0,
-    throttle_pos_percent: sample.engine.throttle_pos_percent ?? 20,
-    engine_load_percent: sample.engine.engine_load_percent ?? 50,
-    engine_hours: sample.engine.engine_hours ?? 1000,
-    exhaust_gas_temp_c: sample.engine.exhaust_gas_temp_c ?? 400,
-    air_flow_rate_gps: sample.engine.air_flow_rate_gps ?? 18,
-    gps_latitude: sample.engine.gps_latitude ?? 37.7749,
-    gps_longitude: sample.engine.gps_longitude ?? -122.4194,
-    vibration_level: sample.engine.vibration_level ?? 1.5,
-  };
-}
+// ================= LOGGING UTILITY =================
+const log = {
+  info: (message, data = null) => {
+    console.log(`ℹ️ [INFO] ${message}`, data || "");
+  },
+  success: (message, data = null) => {
+    console.log(`✅ [SUCCESS] ${message}`, data || "");
+  },
+  error: (message, error = null) => {
+    console.error(`❌ [ERROR] ${message}`, error || "");
+  },
+  debug: (message, data = null) => {
+    console.log(`🔍 [DEBUG] ${message}`, data || "");
+  },
+  api: (message, data = null) => {
+    console.log(`🌐 [API] ${message}`, data || "");
+  },
+};
 
 function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState([]);
+  const [results, setResults] = useState(null);
   const [samples, setSamples] = useState([]);
   const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
   const [mlLoading, setMlLoading] = useState(false);
 
   const overallAnim = useRef(new Animated.Value(0)).current;
 
-  // LOAD SAMPLES (including fallback to Firestore)
+  // ================= LOAD SAMPLES FROM FIREBASE =================
   useEffect(() => {
+    log.info("🚀 HomeScreen mounted, loading samples...");
+    
     async function loadSamples() {
       try {
-        let assignedSampleId = await AsyncStorage.getItem("assignedSampleId");
+        log.debug("Checking for assigned sample ID in AsyncStorage...");
+        let assignedID = await AsyncStorage.getItem("assignedSampleId");
+        log.debug("Assigned ID from storage:", assignedID);
 
-        if (!assignedSampleId) {
-          console.log("No local assigned sample — checking Firestore");
-
-          const user = auth.currentUser;
-          if (user) {
-            const userDoc = await getDoc(doc(db, "users", user.uid));
-            if (userDoc.exists()) {
-              assignedSampleId = userDoc.data().assigned_sample;
-              await AsyncStorage.setItem("assignedSampleId", assignedSampleId);
-            }
+        if (!assignedID && auth.currentUser) {
+          log.info("No cached ID, fetching from Firestore user doc...");
+          const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+          
+          if (userDoc.exists()) {
+            assignedID = userDoc.data().assigned_sample;
+            log.success("Found assigned sample from Firestore:", assignedID);
+            await AsyncStorage.setItem("assignedSampleId", assignedID);
+          } else {
+            log.error("User document does not exist in Firestore");
           }
         }
 
-        if (!assignedSampleId) return;
-
-        const assignedSnap = await getDoc(
-          doc(db, "obd-samples", assignedSampleId)
-        );
-
-        let assignedSample = null;
-        if (assignedSnap.exists()) {
-          assignedSample = { id: assignedSnap.id, ...assignedSnap.data() };
+        if (!assignedID) {
+          log.error("No assigned sample ID found");
+          return;
         }
 
-        const q = query(collection(db, "obd-samples"), orderBy("label"));
-        const allSnap = await getDocs(q);
-        const allSamples = allSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        log.info("Fetching assigned sample document...");
+        const assignedSnap = await getDoc(doc(db, "obd-samples", assignedID));
+        const assignedSample = assignedSnap.exists()
+          ? { id: assignedSnap.id, ...assignedSnap.data() }
+          : null;
 
+        if (assignedSample) {
+          log.success("Assigned sample loaded:", assignedSample.label);
+        }
+
+        log.info("Fetching all OBD samples...");
+        const q = query(collection(db, "obd-samples"), orderBy("label"));
+        const snap = await getDocs(q);
+        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        log.success(`Loaded ${all.length} total samples from Firestore`);
+
+        // assigned sample always first
         const ordered = assignedSample
-          ? [
-              assignedSample,
-              ...allSamples.filter((s) => s.id !== assignedSample.id),
-            ]
-          : allSamples;
+          ? [assignedSample, ...all.filter((s) => s.id !== assignedSample.id)]
+          : all;
 
         setSamples(ordered);
-        setSelectedSampleIndex(0);
+        log.success(`Sample array ready with ${ordered.length} items`);
+        log.debug("First sample:", ordered[0]?.label);
+        
       } catch (err) {
-        console.log("Error loading samples:", err);
+        log.error("Sample load error:", err);
       }
     }
-
+    
     loadSamples();
   }, []);
 
-  async function handleLogout() {
-    await auth.signOut();
-  }
+ async function handleLogout() {
+  try {
+    log.info("User logging out...");
 
-  // Sync selected sample to backend (unchanged)
+    // Clear async storage
+    await AsyncStorage.clear();
+    log.info("AsyncStorage cleared");
+
+    // Firebase logout
+    await auth.signOut();
+    log.success("User signed out");
+  } 
+  catch (error) {
+    log.error("Error logging out:", error);
+  }
+}
+
+  // ================= SEND SAMPLE TO BACKEND =================
   async function syncSelectedSample() {
-    if (!samples.length) return alert("No samples found!");
+    log.info("=== SYNC STARTED ===");
+    
+    if (!samples.length) {
+      log.error("No samples available");
+      return alert("No samples found");
+    }
 
     setMlLoading(true);
     setLoading(true);
-    const startTime = Date.now();
+
+    const selected = samples[selectedSampleIndex];
+    log.info(`Selected sample: "${selected.label}" (index ${selectedSampleIndex})`);
+    
+    // Remove 'id' field from Firebase data before sending to backend
+    const { id, label, ...dataWithoutId } = selected;
+    
+    log.debug("Sample data fields:", Object.keys(dataWithoutId));
+    log.api("📤 Sending POST request to:", PREDICT_URL);
+    log.debug("Payload (without id/label):", dataWithoutId);
 
     try {
-      const selected = samples[selectedSampleIndex];
-      const payload = flattenOBD(selected);
-
       const res = await fetch(PREDICT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: payload }),
+        body: JSON.stringify({ data: dataWithoutId })
       });
 
+      log.api(`Response status: ${res.status} ${res.statusText}`);
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
       const json = await res.json();
-      setResults([json]);
+      log.api("📥 Received response:", json);
+      
+      // Validate response structure
+      if (!json.engine || !json.battery || !json.brake) {
+        log.error("Invalid response structure:", json);
+        throw new Error("Invalid response structure from backend");
+      }
+      
+      log.success("Response validation passed");
+      log.debug("Engine health:", json.engine.health_percent);
+      log.debug("Battery health:", json.battery.health_percent);
+      log.debug("Brake health:", json.brake.health_percent);
+      
+      setResults(json);
+      log.success("✅ Results state updated successfully");
+      log.info("=== SYNC COMPLETED ===");
+
     } catch (err) {
-      alert("Error: " + err.message);
-    }
-
-    const elapsed = Date.now() - startTime;
-    const remaining = 6000 - elapsed;
-
-    setTimeout(
-      () => {
+      log.error("Prediction error:", err);
+      alert("Prediction error: " + err.message);
+    } finally {
+      setTimeout(() => {
         setMlLoading(false);
         setLoading(false);
-      },
-      remaining > 0 ? remaining : 0
-    );
+        log.debug("Loading states reset");
+      }, 2000);
+    }
   }
 
-  // Overall health animation
+  // ================= MONITOR RESULTS STATE =================
   useEffect(() => {
-    if (results[0]) {
-      const e = results[0].engine?.health_percent ?? 0;
-      const b = results[0].battery?.health_percent ?? 0;
-      const br = results[0].brake?.health_percent ?? 0;
+    if (results) {
+      log.debug("🔍 Results state changed:", {
+        engine: results.engine?.health_percent,
+        battery: results.battery?.health_percent,
+        brake: results.brake?.health_percent,
+      });
+    } else {
+      log.debug("🔍 Results state is NULL");
+    }
+  }, [results]);
 
-      const total = Math.round((e + b + br) / 3);
+  // ================= OVERALL HEALTH UI ANIMATION =================
+  useEffect(() => {
+    if (results) {
+      const e = results.engine?.health_percent ?? 0;
+      const b = results.battery?.health_percent ?? 0;
+      const br = results.brake?.health_percent ?? 0;
+      const avg = Math.round((e + b + br) / 3);
+
+      log.debug(`Animating overall health to ${avg}%`);
+
       Animated.timing(overallAnim, {
-        toValue: total,
+        toValue: avg,
         duration: 800,
         useNativeDriver: false,
       }).start();
@@ -187,15 +251,24 @@ function HomeScreen({ navigation }) {
   const radius = (size - stroke) / 2;
   const circ = 2 * Math.PI * radius;
 
-  const animatedStrokeDashoffset = overallAnim.interpolate({
+  const animatedRing = overallAnim.interpolate({
     inputRange: [0, 100],
     outputRange: [circ, 0],
   });
 
   const currentSample = samples[selectedSampleIndex];
 
+  // Calculate overall health for display
+  const overallHealth = results
+    ? Math.round(
+        (results.engine.health_percent +
+          results.battery.health_percent +
+          results.brake.health_percent) / 3
+      )
+    : 92;
+
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
       {mlLoading && <MLLoading />}
 
       <View style={styles.headerRow}>
@@ -203,37 +276,28 @@ function HomeScreen({ navigation }) {
           <Text style={styles.title}>CURRENT VEHICLE</Text>
           <Text style={styles.subtitle}>Model S Dual Motor</Text>
         </View>
-
         <TouchableOpacity onPress={handleLogout}>
           <MaterialCommunityIcons name="logout" size={22} color="#9fb7c7" />
         </TouchableOpacity>
       </View>
 
-      {/* TOP AREA */}
+      {/* ================= TOP CARD ================= */}
       <View style={styles.topArea}>
         <View style={styles.leftSummary}>
           <Text style={styles.overallLabel}>Overall health</Text>
-          <Text style={styles.overallLarge}>
-            {results[0]
-              ? Math.round(
-                  (results[0].engine.health_percent +
-                    results[0].battery.health_percent +
-                    results[0].brake.health_percent) /
-                    3
-                )
-              : 92}
-            %
-          </Text>
+          <Text style={styles.overallLarge}>{overallHealth}%</Text>
 
           <Text style={{ marginTop: 10, color: "#87a4b6" }}>
             Sample: {currentSample?.label ?? "Loading..."}
           </Text>
 
           <TouchableOpacity
-            style={[styles.syncButton, { marginTop: 10 }]}
-            onPress={() =>
-              setSelectedSampleIndex((selectedSampleIndex + 1) % samples.length)
-            }
+            style={styles.syncButton}
+            onPress={() => {
+              const nextIndex = (selectedSampleIndex + 1) % samples.length;
+              log.info(`Switching to sample index ${nextIndex}`);
+              setSelectedSampleIndex(nextIndex);
+            }}
           >
             <Text style={styles.syncText}>Next Sample</Text>
           </TouchableOpacity>
@@ -250,14 +314,14 @@ function HomeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* RING */}
+        {/* RING GRAPH */}
         <View style={styles.ringBox}>
           <Svg width={size} height={size}>
             <Circle
               cx={size / 2}
               cy={size / 2}
               r={radius}
-              stroke="#d3d3d3"
+              stroke="#27323f"
               strokeWidth={stroke}
               fill="transparent"
             />
@@ -270,26 +334,23 @@ function HomeScreen({ navigation }) {
               strokeLinecap="round"
               fill="transparent"
               strokeDasharray={`${circ} ${circ}`}
-              strokeDashoffset={animatedStrokeDashoffset}
+              strokeDashoffset={animatedRing}
               transform={`rotate(-90 ${size / 2} ${size / 2})`}
             />
           </Svg>
         </View>
       </View>
 
-      {/* HEALTH CARDS */}
-      <FlatList
-        data={results.length ? results : [{ dummy: true }]}
-        renderItem={() => (
-          <View>
-            {/* ENGINE */}
+      {/* ================= HEALTH CARDS ================= */}
+      <View style={{ paddingTop: 20, paddingBottom: 40 }}>
+        {results ? (
+          <>
             <HealthCard
               title="Engine"
               iconName="engine"
-              health={results[0]?.engine?.health_percent ?? 92}
-              probability={results[0]?.engine?.probability}
-              failureImminent={results[0]?.engine?.failure_imminent}
-              recommendation={results[0]?.engine?.recommendation}
+              health={results.engine.health_percent}
+              recommendation={results.engine.status}
+              rul={results.engine.rul_km}
               onHelpPress={() =>
                 navigation.navigate("OEMGarages", {
                   type: "engine",
@@ -298,14 +359,12 @@ function HomeScreen({ navigation }) {
               }
             />
 
-            {/* BATTERY */}
             <HealthCard
               title="Battery"
               iconName="battery"
-              health={results[0]?.battery?.health_percent ?? 86}
-              probability={results[0]?.battery?.probability}
-              failureImminent={results[0]?.battery?.failure_imminent}
-              recommendation={results[0]?.battery?.recommendation}
+              health={results.battery.health_percent}
+              recommendation={results.battery.status}
+              rul={results.battery.rul_km}
               onHelpPress={() =>
                 navigation.navigate("OEMGarages", {
                   type: "battery",
@@ -314,65 +373,109 @@ function HomeScreen({ navigation }) {
               }
             />
 
-            {/* BRAKES */}
             <HealthCard
               title="Brakes"
               iconName="car-brake-abs"
-              health={results[0]?.brake?.health_percent ?? 78}
-              probability={results[0]?.brake?.probability}
-              failureImminent={results[0]?.brake?.failure_imminent}
-              recommendation={results[0]?.brake?.recommendation}
+              health={results.brake.health_percent}
+              recommendation={results.brake.status}
+              rul={results.brake.rul_km}
               onHelpPress={() =>
                 navigation.navigate("OEMGarages", {
-                  type: "brake",
+                  type: "brakes",
                   obdData: currentSample,
                 })
               }
             />
+          </>
+        ) : (
+          <View style={{ padding: 20, alignItems: "center" }}>
+            <MaterialCommunityIcons
+              name="information-outline"
+              size={48}
+              color="#4a5f73"
+              style={{ marginBottom: 10 }}
+            />
+            <Text style={{ color: "#87a4b6", fontSize: 16, textAlign: "center" }}>
+              Press "Sync Selected Sample" to load vehicle diagnostics
+            </Text>
           </View>
         )}
-      />
-    </View>
+      </View>
+    </ScrollView>
   );
 }
 
+// ================= AUTH ROUTING =================
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
-  // THIS FIXES LOGIN + LOGOUT STATE ALWAYS
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+    log.info("App mounted, setting up auth listener...");
+    
+    return auth.onAuthStateChanged(async (user) => {
       if (user) {
+        log.success("User authenticated:", user.uid);
         await AsyncStorage.setItem("authToken", user.uid);
         setAuthenticated(true);
       } else {
+        log.info("No authenticated user");
         await AsyncStorage.removeItem("authToken");
         setAuthenticated(false);
       }
+
       setCheckingAuth(false);
     });
-
-    return unsubscribe;
   }, []);
 
-  if (checkingAuth) return null;
+  if (checkingAuth) {
+    log.debug("Checking authentication...");
+    return null;
+  }
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator>
         {!authenticated ? (
           <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Signup" component={SignupScreen} />
+            <Stack.Screen
+              name="Login"
+              component={LoginScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Signup"
+              component={SignupScreen}
+              options={{ title: "Create Account" }}
+            />
           </>
         ) : (
           <>
-            <Stack.Screen name="App" component={HomeScreen} />
-            <Stack.Screen name="OEMGarages" component={OEMGaragesScreen} />
-            <Stack.Screen name="BookingChoice" component={BookingChoiceScreen} />
-            <Stack.Screen name="BookingVisit" component={BookingVisitScreen} />
-            <Stack.Screen name="BookingPickup" component={BookingPickupScreen} />
+            <Stack.Screen
+              name="App"
+              component={HomeScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="OEMGarages"
+              component={OEMGaragesScreen}
+              options={{ title: "Service Centres" }}
+            />
+            <Stack.Screen
+              name="BookingChoice"
+              component={BookingChoiceScreen}
+              options={{ title: "Choose Booking Type" }}
+            />
+            <Stack.Screen
+              name="BookingVisit"
+              component={BookingVisitScreen}
+              options={{ title: "Visit Booking" }}
+            />
+            <Stack.Screen
+              name="BookingPickup"
+              component={BookingPickupScreen}
+              options={{ title: "Pickup Booking" }}
+            />
           </>
         )}
       </Stack.Navigator>
