@@ -101,7 +101,7 @@ export default function HealthCard({
 
         {showRUL && (
           <Text style={[styles.recoText, { marginTop: 6 }]}>
-            RUL: {rul?.toFixed(1)} km remaining
+            Next Maintenance In: {rul?.toFixed(1)} km 
           </Text>
         )}
 

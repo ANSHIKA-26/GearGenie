@@ -106,7 +106,7 @@ out body;
       >
         <ActivityIndicator size="large" color="#2ecc71" />
         <Text style={{ color: "white", marginTop: 10 }}>
-          Finding OEM service centres...
+          Finding Authorized service centres...
         </Text>
       </View>
     );
@@ -114,7 +114,7 @@ out body;
   return (
     <View style={{ flex: 1, backgroundColor: "#06212c", padding: 20 }}>
       <Text style={{ color: "white", fontSize: 26, marginBottom: 15 }}>
-        Authorized Service Centres (within 100 KM)
+        Authorized Service Centres
       </Text>
 
       <FlatList
