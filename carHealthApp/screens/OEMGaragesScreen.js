@@ -52,12 +52,12 @@ export default function OEMGaragesScreen({ route, navigation }) {
     const { latitude, longitude } = pos.coords;
 
     const query = `
-[out:json][timeout:25];
+[out:json][timeout:70];
 (
-  node["amenity"="car_dealership"](around:100000,${latitude},${longitude});
-  node["shop"="car_repair"](around:100000,${latitude},${longitude});
-  node["service"="vehicle_repair"](around:100000,${latitude},${longitude});
-  node["amenity"="car_repair"](around:100000,${latitude},${longitude});
+  node["amenity"="car_dealership"](around:10000,${latitude},${longitude});
+  node["shop"="car_repair"](around:10000,${latitude},${longitude});
+  node["service"="vehicle_repair"](around:10000,${latitude},${longitude});
+  node["amenity"="car_repair"](around:10000,${latitude},${longitude});
 );
 out body;
 `;
@@ -73,7 +73,7 @@ out body;
       const filtered = json.elements.filter(
         (item) =>
           item.tags?.shop === "car_repair" ||
-          item.tags?.amenity === "car_repair" ||
+          item.tags?.amenity === "car_repair"||
           item.tags?.amenity === "service" ||
           item.tags?.amenity === "car_dealership" ||
           item.tags?.service === "vehicle_repair"
